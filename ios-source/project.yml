@@ -1,0 +1,28 @@
+name: DeliveryStockIOS
+options:
+  bundleIdPrefix: id.co.elmecon
+settings:
+  base:
+    IPHONEOS_DEPLOYMENT_TARGET: '15.0'
+    SWIFT_VERSION: '5.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+targets:
+  DeliveryStockIOS:
+    type: application
+    platform: iOS
+    deploymentTarget: '15.0'
+    sources:
+      - path: Sources
+      - path: Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: id.co.elmecon.deliverystock
+        INFOPLIST_KEY_CFBundleDisplayName: Delivery Stock
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Delivery Stock
+        UILaunchScreen: {}
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true # SEMENTARA: HTTP IP. Hapus setelah pakai HTTPS.

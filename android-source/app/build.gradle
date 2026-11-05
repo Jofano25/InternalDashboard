@@ -1,0 +1,36 @@
+plugins { id 'com.android.application' }
+
+def keystorePath = System.getenv('DELIVERY_KEYSTORE_PATH')
+android {
+    namespace 'id.co.elmecon.deliverystock'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'id.co.elmecon.deliverystock'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+    signingConfigs {
+        if (keystorePath != null && !keystorePath.isEmpty()) {
+            deliveryRelease {
+                storeFile file(keystorePath)
+                storePassword System.getenv('DELIVERY_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('DELIVERY_KEY_ALIAS')
+                keyPassword System.getenv('DELIVERY_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (keystorePath != null && !keystorePath.isEmpty()) {
+                signingConfig signingConfigs.deliveryRelease
+            }
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

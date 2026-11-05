@@ -1,0 +1,13 @@
+DI PALING ATAS /var/www/html/delivery/media.php, SEBELUM HEADER/OUTPUT dan sebelum menjalankan modul:
+
+<?php
+if (isset($_GET['module']) && $_GET['module'] === 'rpt_stock_new') {
+    require __DIR__ . '/mobile/guard.php';
+}
+// lanjutkan kode media.php yang lama; jika sudah ada <?php jangan diduplikasi.
+
+PENTING:
+* Jika ada endpoint AJAX/export/PDF/Excel yang bisa membaca data laporan tanpa lewat media.php,
+  sisipkan guard yang sama di awal endpoint tersebut. Kalau tidak, data masih dapat diakses langsung.
+* Jangan hanya memblokir tombol/menu atau JS; wajib pemeriksaan di SERVER.
+* Pastikan integrasi login/session situs yang sudah ada tetap berlaku.
