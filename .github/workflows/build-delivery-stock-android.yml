@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -25,32 +25,40 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK command-line tools
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK 35
-        shell: bash
-        run: |
-          set -euo pipefail
-          command -v sdkmanager
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
-
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+
+      # The GitHub-hosted ubuntu-24.04 runner already includes Android SDK
+      # command-line tools. Do not use android-actions/setup-android@v3 here:
+      # its old default 'tools' package is no longer available.
+      - name: Install Android SDK 35 (preinstalled sdkmanager)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ANDROID_HOME=${ANDROID_HOME:-}"
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            echo "Android sdkmanager not found at $SDKMANAGER" >&2
+            exit 1
+          fi
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+          echo "SDK installation complete"
 
       - name: Verify Android project
         shell: bash
         run: |
           set -euo pipefail
           test -f android-source/settings.gradle
+          test -f android-source/build.gradle
           test -f android-source/app/build.gradle
           test -f android-source/app/src/main/AndroidManifest.xml
           gradle --version
 
-      - name: Build installable debug APK
+      - name: Build installable Android APK
         shell: bash
         run: |
           set -euo pipefail
@@ -66,7 +74,3 @@ jobs:
           path: output/*.apk
           if-no-files-found: error
           retention-days: 30
-      - name: Set up Android SDK command-line tools
-        uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools'
