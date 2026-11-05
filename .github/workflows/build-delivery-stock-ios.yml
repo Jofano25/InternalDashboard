@@ -1,0 +1,207 @@
+name: Build Delivery Stock iPhone IPA (Apple Signed)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-delivery-stock-ios:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Apple signing configuration
+        shell: bash
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          CERT_PASS: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CERT" || -z "$CERT_PASS" || -z "$PROFILE" || -z "$TEAM" ]]; then
+            echo '::error::iOS IPA requires Apple signing secrets: APPLE_CERTIFICATE_P12_BASE64, APPLE_CERTIFICATE_PASSWORD, APPLE_PROVISIONING_PROFILE_BASE64, APPLE_TEAM_ID'
+            exit 1
+          fi
+
+      - name: Setup XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Delivery Stock iOS project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ios-delivery-stock
+          mkdir -p "$(dirname "ios-delivery-stock/Assets.xcassets/AppIcon.appiconset/Contents.json")"
+          cat > 'ios-delivery-stock/Assets.xcassets/AppIcon.appiconset/Contents.json' <<'__DS_IOS_EOF_3__'
+          {
+            "images": [
+              {
+                "filename": "app_icon_1024.png",
+                "idiom": "universal",
+                "platform": "ios",
+                "size": "1024x1024"
+              }
+            ],
+            "info": {
+              "author": "xcode",
+              "version": 1
+            }
+          }
+          __DS_IOS_EOF_3__
+          mkdir -p "$(dirname "ios-delivery-stock/Assets.xcassets/AppIcon.appiconset/app_icon_1024.png")"
+          printf '%s' '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RAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEQAfb8/6Php4AAETKeUjnEgAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAdDZPIIXAJh9zkA6mgAAAICICAAAAIiIAAAAgIgIAAAAiIgAAACAiAiAjudr+ADAbHLu0ekEAAAAREQAAABARAQAAABERABkgVvxAIDZ4awjAwQAAABERAAAAEBEBAAAAEREAGSEG/IAgJnmfCMbBAAAAEREAAAAQEQEAAAAREQAZIfb8gCAmeNMIzMEAAAAREQAAABARARAprg2BwDMBOcYWSIAAAAgIgIAAAAiIgCyxhU6AKC1nF1kjAAAAICICAAAAIiIAMgg1+kAgFZxXpE9AgAAACIiALJJrAMAp88ZRSYJAAAAiIgAAACAiAiAzHLNDgA4Hc4lskoAAABARARAlgl3AODUOIvIMAEAAAAREQAZJ98BgOly/pBtAgAAACIiALJPxAMAJ8+ZQ+YJAAAAiIgAiIKUBwBOhnOGGAgAAACIiACIhaAHAI7P2UIkBAAAAEREAERE1gMAr8Z5QjwEAAAAREQAxEXcAwDfyxlCVARAdPwNBwC+m3OD2AgAAACIiACIkdAHAI5xVhAhAQAAABERAJGS+wCA84E4CYB4+TsPADFzJhAtAQAAABERAFGT/gAQJ+cAMRMAsfP3HwBi4+gfOQGATwEAiIjjPgIAAAAiIgBIEj8MAIA4OOKTCABe4BMBALLNsZ5jBAAv8rkAAFnlKM8LBAAAAEREAPASfjwAANnj+M53EwC8nM8IAMgSR3ZeRgDwCnxSAEA2OKbzvQQAr8znBQB0OkdzXpEA4FX51ACAzuU4zqsRAAAAEBEBwPH44QEAdCJHcI5DAHACPkEAoLM4dnN8AoAT8zkCAJ3CUZsTEgCcFJ8mAND+HK85GQKAk+UzBQDamSM1J0kAMA0+WQCgPTlGc/IEANPj8wUA2o2jM9MiAJg2nzIA0D4cl5kuAcCp8FkDAO3AEZlTIAA4RT5xACAsx2JOTdq79prQG+hsi//m10NPAIC4OPXndLgCwOnyGQQAs8mRl9MkAGgBn0QAMDscczl9AoDW8HkEADPN0ZaWEAC0jE8lAJg5jrO0ii8B03q+FgwALeTUn9ZyBYDW8zkFAK3iqErLCQBmhE8rADh9jqfMBLcAMbPcDgQAp8CpPzPHFQBmls8vAJguR09mlABgxvkUA4CT57jJTHMLELPH7UAAcBxO/ZkdrgAwe3yuAcCrcZRk1rgCQAAuBQDAC5z6M8sEAMHIAAAi59SfINwCRDA+9QCImeMgobgCQHguBQAQFaf+hCUAaBcyAIDMc+pPOxAAtBcZAEAmOfWnfQgA2pEMACAznPrTbgQA7UsGANDRnPrTngQA7U4GANBxnPrTzgQAnUEGANARnPrT/gQAHUYJANCGnPfTQQQAHUkGANAmnPrTcQQAnU0JABCE8346lwAgI5QAALPAeT8ZIADIGiUAQMs57ydLBABZJgYAOGVO+skqAUAsxAAAJ+SknxgIAGIkBgB4gZN+YiMAIEkkAUA0nO6DAIDjEQYAHcqJPrwaAQAAABHJhR4AAADMHgEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABERAAAAEBEBAAAAEREAAAAQEQEAAAAREQAAABARAQAAABH5/wGFi6RczqMBLQAAAABJRU5ErkJggg==' | base64 --decode > 'ios-delivery-stock/Assets.xcassets/AppIcon.appiconset/app_icon_1024.png'
+          mkdir -p "$(dirname "ios-delivery-stock/Sources/DeliveryStockApp.swift")"
+          cat > 'ios-delivery-stock/Sources/DeliveryStockApp.swift' <<'__DS_IOS_EOF_22__'
+          import SwiftUI
+          
+          @main
+          struct DeliveryStockApp: App {
+              var body: some Scene {
+                  WindowGroup { DeliveryWebView() }
+              }
+          }
+          __DS_IOS_EOF_22__
+          mkdir -p "$(dirname "ios-delivery-stock/Sources/DeliveryWebView.swift")"
+          cat > 'ios-delivery-stock/Sources/DeliveryWebView.swift' <<'__DS_IOS_EOF_33__'
+          import SwiftUI
+          import WebKit
+          
+          struct DeliveryWebView: UIViewRepresentable {
+              private let startURL = URL(string: "http://103.41.207.63/delivery/media.php?module=rpt_stock_new")!
+              func makeUIView(context: Context) -> WKWebView {
+                  let cfg = WKWebViewConfiguration()
+                  cfg.websiteDataStore = .default() // cookie persetujuan perangkat tetap tersimpan
+                  cfg.defaultWebpagePreferences.allowsContentJavaScript = true
+                  let webView = WKWebView(frame: .zero, configuration: cfg)
+                  webView.navigationDelegate = context.coordinator
+                  webView.uiDelegate = context.coordinator
+                  webView.scrollView.contentInsetAdjustmentBehavior = .never
+                  webView.load(URLRequest(url: startURL))
+                  return webView
+              }
+              func updateUIView(_ uiView: WKWebView, context: Context) {}
+              func makeCoordinator() -> Coordinator { Coordinator(host: startURL.host ?? "") }
+              final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+                  let host: String
+                  init(host: String) { self.host = host }
+                  func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                               decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+                      guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
+                      if url.host == host || url.scheme == "about" { decisionHandler(.allow); return }
+                      if let scheme = url.scheme, ["http", "https", "mailto", "tel"].contains(scheme) {
+                          UIApplication.shared.open(url)
+                      }
+                      decisionHandler(.cancel)
+                  }
+                  func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                               for navigationAction: WKNavigationAction,
+                               windowFeatures: WKWindowFeatures) -> WKWebView? {
+                      if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
+                          if url.host == host { webView.load(URLRequest(url: url)) }
+                          else { UIApplication.shared.open(url) }
+                      }
+                      return nil
+                  }
+              }
+          }
+          __DS_IOS_EOF_33__
+          mkdir -p "$(dirname "ios-delivery-stock/project.yml")"
+          cat > 'ios-delivery-stock/project.yml' <<'__DS_IOS_EOF_77__'
+          name: DeliveryStockIOS
+          options:
+            bundleIdPrefix: id.co.elmecon
+          settings:
+            base:
+              IPHONEOS_DEPLOYMENT_TARGET: '15.0'
+              SWIFT_VERSION: '5.0'
+              TARGETED_DEVICE_FAMILY: '1,2'
+          targets:
+            DeliveryStockIOS:
+              type: application
+              platform: iOS
+              deploymentTarget: '15.0'
+              sources:
+                - path: Sources
+                - path: Assets.xcassets
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: id.co.elmecon.deliverystock
+                  INFOPLIST_KEY_CFBundleDisplayName: Delivery Stock
+                  ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+              info:
+                path: Info.plist
+                properties:
+                  CFBundleDisplayName: Delivery Stock
+                  UILaunchScreen: {}
+                  NSAppTransportSecurity:
+                    NSAllowsArbitraryLoads: true # SEMENTARA: HTTP IP. Hapus setelah pakai HTTPS.
+          __DS_IOS_EOF_77__
+
+      - name: Import Apple signing certificate and provisioning profile
+        shell: bash
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          CERT_PASS: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          echo "$CERT" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          echo "$PROFILE" | base64 --decode > "$RUNNER_TEMP/signing.mobileprovision"
+          security create-keychain -p "${{ github.run_id }}-delivery-stock" delivery-build.keychain
+          security default-keychain -s delivery-build.keychain
+          security unlock-keychain -p "${{ github.run_id }}-delivery-stock" delivery-build.keychain
+          security set-keychain-settings -lut 3600 delivery-build.keychain
+          security import "$RUNNER_TEMP/signing.p12" -k delivery-build.keychain -P "$CERT_PASS" -A -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "${{ github.run_id }}-delivery-stock" delivery-build.keychain
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          security cms -D -i "$RUNNER_TEMP/signing.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/profile.plist")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")
+          cp "$RUNNER_TEMP/signing.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+
+      - name: Build and archive signed iPhone app
+        shell: bash
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          cd ios-delivery-stock
+          xcodegen generate
+          xcodebuild -project DeliveryStockIOS.xcodeproj -scheme DeliveryStockIOS -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/DeliveryStock.xcarchive" archive CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$TEAM" PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" CODE_SIGN_IDENTITY='Apple Distribution'
+
+      - name: Export IPA (Ad Hoc)
+        shell: bash
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>ad-hoc</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>provisioningProfiles</key><dict>
+              <key>id.co.elmecon.deliverystock</key><string>$PROFILE_NAME</string>
+            </dict>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/DeliveryStock.xcarchive" -exportPath "$RUNNER_TEMP/delivery-export" -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+          mkdir -p delivery-ios-artifacts
+          cp "$RUNNER_TEMP/delivery-export/DeliveryStockIOS.ipa" 'delivery-ios-artifacts/DeliveryStock-v1.0.0-iPhone.ipa'
+          cd delivery-ios-artifacts
+          shasum -a 256 DeliveryStock-v1.0.0-iPhone.ipa > SHA256SUMS.txt
+
+      - name: Upload signed IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeliveryStock-v1.0.0-iPhone-IPA
+          path: delivery-ios-artifacts/
+          retention-days: 30
+          if-no-files-found: error
