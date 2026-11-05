@@ -66,3 +66,7 @@ jobs:
           path: output/*.apk
           if-no-files-found: error
           retention-days: 30
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
