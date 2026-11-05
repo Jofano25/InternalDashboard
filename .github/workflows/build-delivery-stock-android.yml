@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/build-delivery-stock-android.yml'
+      - 'android-source/**'
 
 permissions:
   contents: read
@@ -13,313 +14,55 @@ permissions:
 jobs:
   build-delivery-stock:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
-      - name: Checkout (tanpa mengubah source EMOS)
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
-      - name: Java 17
-        uses: actions/setup-java@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Gradle 8.9
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v sdkmanager
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Android SDK 35
+      - name: Verify Android project
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+          test -f android-source/settings.gradle
+          test -f android-source/app/build.gradle
+          test -f android-source/app/src/main/AndroidManifest.xml
+          gradle --version
 
-      - name: Generate Delivery Stock Android project (self-contained)
+      - name: Build installable debug APK
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p delivery-stock-android
-          mkdir -p "$(dirname "delivery-stock-android/app/build.gradle")"
-          cat > 'delivery-stock-android/app/build.gradle' <<'__DELIVERY_STOCK_EOF_3__'
-          plugins { id 'com.android.application' }
-          
-          def keystorePath = System.getenv('DELIVERY_KEYSTORE_PATH')
-          android {
-              namespace 'id.co.elmecon.deliverystock'
-              compileSdk 35
-              defaultConfig {
-                  applicationId 'id.co.elmecon.deliverystock'
-                  minSdk 24
-                  targetSdk 35
-                  versionCode 1
-                  versionName '1.0.0'
-              }
-              signingConfigs {
-                  if (keystorePath != null && !keystorePath.isEmpty()) {
-                      deliveryRelease {
-                          storeFile file(keystorePath)
-                          storePassword System.getenv('DELIVERY_KEYSTORE_PASSWORD')
-                          keyAlias System.getenv('DELIVERY_KEY_ALIAS')
-                          keyPassword System.getenv('DELIVERY_KEY_PASSWORD')
-                      }
-                  }
-              }
-              buildTypes {
-                  release {
-                      minifyEnabled false
-                      if (keystorePath != null && !keystorePath.isEmpty()) {
-                          signingConfig signingConfigs.deliveryRelease
-                      }
-                  }
-              }
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-          }
-          __DELIVERY_STOCK_EOF_3__
-          mkdir -p "$(dirname "delivery-stock-android/app/src/main/AndroidManifest.xml")"
-          cat > 'delivery-stock-android/app/src/main/AndroidManifest.xml' <<'__DELIVERY_STOCK_EOF_42__'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.INTERNET"/>
-              <application
-                  android:label="Delivery Stock"
-                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
-                  android:icon="@mipmap/ic_launcher"
-                  android:usesCleartextTraffic="true"
-                  android:allowBackup="false"
-                  android:supportsRtl="true">
-                  <!-- usesCleartextTraffic=true HANYA untuk URL http:// saat ini. Ganti ke false setelah HTTPS aktif. -->
-                  <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
-          __DELIVERY_STOCK_EOF_42__
-          mkdir -p "$(dirname "delivery-stock-android/app/src/main/java/id/co/elmecon/deliverystock/MainActivity.java")"
-          cat > 'delivery-stock-android/app/src/main/java/id/co/elmecon/deliverystock/MainActivity.java' <<'__DELIVERY_STOCK_EOF_64__'
-          package id.co.elmecon.deliverystock;
-          
-          import android.app.Activity;
-          import android.app.DownloadManager;
-          import android.content.ActivityNotFoundException;
-          import android.content.Intent;
-          import android.net.Uri;
-          import android.os.Bundle;
-          import android.os.Environment;
-          import android.view.View;
-          import android.webkit.CookieManager;
-          import android.webkit.URLUtil;
-          import android.webkit.ValueCallback;
-          import android.webkit.WebChromeClient;
-          import android.webkit.WebResourceError;
-          import android.webkit.WebResourceRequest;
-          import android.webkit.WebView;
-          import android.webkit.WebViewClient;
-          import android.widget.LinearLayout;
-          import android.widget.ProgressBar;
-          import android.widget.Toast;
-          import android.graphics.Color;
-          
-          public final class MainActivity extends Activity {
-              private static final String START_URL = "http://103.41.207.63/delivery/media.php?module=rpt_stock_new";
-              private static final String ALLOWED_HOST = "103.41.207.63";
-              private static final int FILE_CHOOSER_REQUEST = 7123;
-              private WebView webView;
-              private ProgressBar progress;
-              private ValueCallback<Uri[]> fileCallback;
-          
-              @Override public void onCreate(Bundle state) {
-                  super.onCreate(state);
-                  getWindow().setStatusBarColor(Color.rgb(10, 35, 61));
-                  LinearLayout layout = new LinearLayout(this);
-                  layout.setOrientation(LinearLayout.VERTICAL);
-                  layout.setBackgroundColor(Color.WHITE);
-                  progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-                  progress.setMax(100);
-                  layout.addView(progress, new LinearLayout.LayoutParams(-1, 3));
-                  webView = new WebView(this);
-                  layout.addView(webView, new LinearLayout.LayoutParams(-1, 0, 1));
-                  setContentView(layout);
-          
-                  webView.getSettings().setJavaScriptEnabled(true); // dibutuhkan jika laporan menggunakan JS/DataTables
-                  webView.getSettings().setDomStorageEnabled(true);
-                  webView.getSettings().setAllowFileAccess(false);
-                  webView.getSettings().setAllowContentAccess(true);
-                  webView.getSettings().setSupportMultipleWindows(false);
-                  webView.getSettings().setJavaScriptCanOpenWindowsAutomatically(false);
-                  webView.getSettings().setBuiltInZoomControls(true);
-                  webView.getSettings().setDisplayZoomControls(false);
-                  CookieManager.getInstance().setAcceptCookie(true);
-                  CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false);
-          
-                  webView.setWebChromeClient(new WebChromeClient() {
-                      @Override public void onProgressChanged(WebView view, int newProgress) {
-                          progress.setProgress(newProgress);
-                          progress.setVisibility(newProgress >= 100 ? View.GONE : View.VISIBLE);
-                      }
-                      @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
-                          if (fileCallback != null) fileCallback.onReceiveValue(null);
-                          fileCallback = callback;
-                          try { startActivityForResult(params.createIntent(), FILE_CHOOSER_REQUEST); return true; }
-                          catch (ActivityNotFoundException e) { fileCallback = null; return false; }
-                      }
-                  });
-                  webView.setWebViewClient(new WebViewClient() {
-                      @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                          Uri uri = request.getUrl();
-                          if (("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
-                                  && ALLOWED_HOST.equalsIgnoreCase(uri.getHost())) return false;
-                          try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); }
-                          catch (Exception e) { Toast.makeText(MainActivity.this, "Tidak dapat membuka tautan", Toast.LENGTH_LONG).show(); }
-                          return true;
-                      }
-                      @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                          if (request.isForMainFrame()) Toast.makeText(MainActivity.this,
-                                  "Gagal terhubung. Periksa jaringan / alamat server.", Toast.LENGTH_LONG).show();
-                      }
-                  });
-                  webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
-                      if (!(url.startsWith("http://") || url.startsWith("https://"))) {
-                          Toast.makeText(this, "Unduhan jenis ini belum didukung", Toast.LENGTH_LONG).show(); return;
-                      }
-                      try {
-                          DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-                          request.addRequestHeader("User-Agent", userAgent);
-                          String cookies = CookieManager.getInstance().getCookie(url);
-                          if (cookies != null) request.addRequestHeader("Cookie", cookies);
-                          String filename = URLUtil.guessFileName(url, contentDisposition, mimeType);
-                          request.setTitle(filename);
-                          request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                          request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
-                          ((DownloadManager)getSystemService(DOWNLOAD_SERVICE)).enqueue(request);
-                          Toast.makeText(this, "Mengunduh ke folder Downloads", Toast.LENGTH_SHORT).show();
-                      } catch (Exception e) { Toast.makeText(this, "Unduhan gagal dimulai", Toast.LENGTH_LONG).show(); }
-                  });
-                  if (state == null) webView.loadUrl(START_URL); else webView.restoreState(state);
-              }
-              @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-                  super.onActivityResult(requestCode, resultCode, data);
-                  if (requestCode == FILE_CHOOSER_REQUEST && fileCallback != null) {
-                      fileCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
-                      fileCallback = null;
-                  }
-              }
-              @Override public void onBackPressed() {
-                  if (webView != null && webView.canGoBack()) webView.goBack(); else super.onBackPressed();
-              }
-              @Override protected void onSaveInstanceState(Bundle out) {
-                  if (webView != null) webView.saveState(out);
-                  super.onSaveInstanceState(out);
-              }
-              @Override protected void onDestroy() {
-                  if (webView != null) { webView.destroy(); webView = null; }
-                  super.onDestroy();
-              }
-          }
-          __DELIVERY_STOCK_EOF_64__
-          mkdir -p "$(dirname "delivery-stock-android/app/src/main/res/drawable/launcher_foreground.xml")"
-          cat > 'delivery-stock-android/app/src/main/res/drawable/launcher_foreground.xml' <<'__DELIVERY_STOCK_EOF_186__'
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#27D5CE" android:pathData="M28,28 L80,28 L80,79 L28,79 Z"/>
-              <path android:fillColor="#0B263F" android:pathData="M36,38 L49,38 Q63,38 63,53 Q63,68 49,68 L36,68 Z"/>
-              <path android:fillColor="#27D5CE" android:pathData="M43,44 L49,44 Q56,44 56,53 Q56,62 49,62 L43,62 Z"/>
-              <path android:fillColor="#0B263F" android:pathData="M65,38 L73,38 L73,44 L65,44 Z M65,49 L73,49 L73,55 L65,55 Z M65,60 L73,60 L73,68 L65,68 Z"/>
-          </vector>
-          __DELIVERY_STOCK_EOF_186__
-          mkdir -p "$(dirname "delivery-stock-android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml")"
-          cat > 'delivery-stock-android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml' <<'__DELIVERY_STOCK_EOF_195__'
-          <?xml version="1.0" encoding="utf-8"?>
-          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background android:drawable="@color/launcher_background"/>
-              <foreground android:drawable="@drawable/launcher_foreground"/>
-          </adaptive-icon>
-          __DELIVERY_STOCK_EOF_195__
-          mkdir -p "$(dirname "delivery-stock-android/app/src/main/res/mipmap-hdpi/ic_launcher.png")"
-          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAIAAADajyQQAAAJfUlEQVR4nO2aXYxdVRXH11r7nH0+7vfMZabtUIaOZUjBIgkUFVQoAVLRBpLaqChCjPImUQk+GBPjA28EfSIKT6YxEYVoYjAoSkJGGoqhrbTQWph+UDvTdtqZuTP3ns+99/Lh3NKmDrdz79yZMjj/TG5yM9n3rN/Z66y91joLc8O3w8dRdLkNWCytgC03rYAtN62ALTdZnSwiBMRuW/LhYgA2wO0tagcMEQhBaQ5i1ga4zUt1KrQESgm2AMPzv+i8wYhAazMbUqkghwfttavQ94AZFm/nGACRw0idOJWOntBTNfJdsCwwZj6r5wcmiIMIc17xwa3enbdYq6so7SXyRmZOlT51Nnj1zcYfXzG1Wcx5oC/NhpfOFQVxPbSHr6o89pB9zVUcxpykYJbIDwEACNG20HPV++NTT+1I3jqEBf+SbJcCI+IglNeu633ie+i73AhB0JJGjkzMoA36Lis9+dOn4z0HMOe39smW4R6RlaJyofKjh9F3OQjBEpeBCgAQwRIcxiio8vjDor/KSdrakpZghBxE+e33WINruBGCEF02t10J4jAW/T2Fb9zLcdIpGCIkqbWq6t+xyWQe+FGQJUw99G670R5c3ZqtFRjHqdwwRNUyKHV5PHBOKU3FvNx4DScpUCdgwMbY6waQqN1Tf9GFaF890Nqq1g6GWPC7alE3hADMVMwhYQu2j8aTswhaAVtu6qhsyWQY5vBxbKbF84yizHNkZwiAC62MOgdDzwFxUcDkzFDWBrQGbZqVzpxiBmZ0JDqy+RWat4ONgVRxqjq2DToHQ0zeHjX14AM2RAAilDb6LhVyVMpTKc+p4jACpIurG2YQglyZHjmRvD2qxk6bIAIk8h3qKVmrqtZAn+jrAcSOq76OwJjRtmrPvpC8dQh9t+lLCAD4QSYuqmW5Yci7c5Oz4RMmjMCY867FjJZlonjq6d+Gr75pGiEAYLZX2X8FoefaV62q/Pi7olLkjtKDBbiiI9F30XfAMED2SDTvLgdhOjqbHDjc+PNI7oufK377frQEK920D5G1nnri2WjXPioXRKnAWnOSAjMioiVACGCTHh3jOG6RWywWWPO5z/7YcJICABhmrdG20PfIc9mY+vMvq7HTPT95BIjAMBhDxVz9D3+P3thPV1RAadMIqJizhwbQkRynZrKmz0ybIKS83zHVwsAyIXKa2mv7i498BYzhKFFjE9E/9yf73gVHAhFVy9HOvbVnni9//5tcDwCRlY527UfHRmYTxc5N15UffUBUikAExpgg0uMT8Z6D0Rv7F1LOLhgMEIxB33U2XZ+FQSTKb7+78eJI7VfPIzKkiirF4KWd/uZb5Mb1HMYcxXqq1iyClM7ft9keXKNOngEiJERH2sNXy0+uz91/J2h93oHbVJcOaMPcCLkRcj0wtTo3osL2ewpf22IaIRBlBWvwyi4UIotyiJgdDSAoHHlTT82IclGU8ui7gGgaoZ6cAQCwrKWNinPqwiKAWU/P5rbc1nhxhGcbYFtoW+m/j5p6AIDou6K/N33vOIBEzwlefj1554jcuN4eutIeXG0N9FFvGRC5EQJzx8d098AuFCIoTeWCPbg63n0ApYWW0NOzZrZB5QIw+PfcGo7sRsNAhJ6rxifSo2OAgNIWlaI9POhv3uTeeiMrDfryuuIcYhCC8v75lCJVHKcoBDdC9zM3lL6zjcPIzDZAKXSlqBREuYCObWr18B97zv7sl5NPPMtJAue8t10tzo4BZIUqp2nzGwMQNdMUQg6j/Ne3yOuGGn96NX5n1EzWTKqQCF0JtkW2BYTB316nYq78gwezWNru5RcNjJDDWI2fAdsCBjaGch7lfDa6WSrWA7lxvfzUsD49qY6Np6PHk3ePJW8fNlMz6DmgjegpRa/t1V/dIqplTttOPhYBjBmUpp5StHOven8cPQcAIFX2lf1UynEQAyGQAKVMPURCKuWdm69zP72RtTaTM9NPPxe9tidbZRqhOnlGrK7CpZpt/6tuP2OIaFvUW1L/OVV75oVmqCRkrd3P3oBCZBUAN0LM+5T3gIiT1Mw09NSMmZ6larmw/W6ArHGf9Ul1Z4Z0b8eyCkppfXY62nOw/ru/6okpdCUQcj2U1wx6d2wyQQSA6Mjpp3agK3Nbb7euHhB5DwCbVYy0433vgWFABGPQtqmYB2Og/XcfCwZjg9JWJ06f+eGTAMBJaiZrenoWHYm+A4gcROjK0qMPoOtwGGXpsgnj8KXXwpHd1uAaOTxoDfRhzuNUpQcOhyO70ZUAwKmy1lxhDfRxojpIGhcAlkW5ZmKh0yMnIEspLCHKBTaGk5SDyFrTV3n8YblhiLPizTAAsDZUyIGU6eHj6cEjzIyI2SfmvCxp5EaQ23oHFXJmptFBu7ZzMA5CM9NApcAw4rnil4FDBgCUlqhW3C/fXth2F1XL3AguNM5ac0Xyr4OmNosIIC0iAYQIAIY5SjhN0bYKD92X+9Lnm7Vs++oUzLBz8/Wivxcd+1yhiSgIHYl5T/SWrYF+e2hAVCsmjDnLGDMRcpyUHtmWu/e2ZP9ocuiYHp/QtTrECTOjtEW5aK9f623eJK9fz2G0tCkVImtdfGgrCsEXpAV4ro4EANaa49TU6kB4nuoDMdvrrpTXrmPDHMfNd24MKC30XfJcThU3gjkWzlsLccWYL27lXNC2ypzzw72I44TDGLJOiSvRc5qxURtTqwPOdTva0UKCB3YQhc8LEcS55ZoBsrd4CAhdebOzeLliO0JY0D2aSx/bTvAK2HLTCthyU2sw5nq4RIbMXwyAaOoBm1YDTx8OxoCE6bExNmYRB6Y6E7M6OtbaqhZgDFImBw6bqRmwPhrHXSZBph7E+99DabdoFbcCQ8dWYxPhyG7KeaA6rGS7LKUp70e79qVHTqAjWzSwWj5jhtGV9ef+osYnsgZL9w1tS8agI/XUzOxvXkT7Ek3ilmDMaNt6Ymr6yV+zMeg6oPSSzV9eZAkojdIGS0z/fEf6/snW2wXzHeubDeSN11Ye+5Y10M9ByKla0pEWBLAsynn69OT0L3aEr++jLoz1ZRLE9ZB6S/ltd3lfuElUK2gt3cAYa23O1sKde+u/f1mfPDOfYUWYLxgAEEGqTBiJvh45PGitXUU5b9H3DcGEkTp+Kj10TJ06i45Eac9zdHbeYHBu2DlRHCc8v1/vipAIHRuy4N79YWfI2pcMlkDbX9JZOG5OmLa1qP2Tl9u4bZdR/6dJ8DLWCthy0wrYctPHFuy//r2cHjLaUVUAAAAASUVORK5CYII=' | base64 --decode > 'delivery-stock-android/app/src/main/res/mipmap-hdpi/ic_launcher.png'
-          mkdir -p "$(dirname "delivery-stock-android/app/src/main/res/mipmap-mdpi/ic_launcher.png")"
-          printf '%s' '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' | base64 --decode > 'delivery-stock-android/app/src/main/res/mipmap-mdpi/ic_launcher.png'
-          mkdir -p "$(dirname "delivery-stock-android/app/src/main/res/mipmap-xhdpi/ic_launcher.png")"
-          printf '%s' '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' | base64 --decode > 'delivery-stock-android/app/src/main/res/mipmap-xhdpi/ic_launcher.png'
-          mkdir -p "$(dirname "delivery-stock-android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png")"
-          printf '%s' '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' | base64 --decode > 'delivery-stock-android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png'
-          mkdir -p "$(dirname "delivery-stock-android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png")"
-          printf '%s' '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' | base64 --decode > 'delivery-stock-android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png'
-          mkdir -p "$(dirname "delivery-stock-android/app/src/main/res/values/colors.xml")"
-          cat > 'delivery-stock-android/app/src/main/res/values/colors.xml' <<'__DELIVERY_STOCK_EOF_213__'
-          <resources><color name="launcher_background">#0B263F</color></resources>
-          __DELIVERY_STOCK_EOF_213__
-          mkdir -p "$(dirname "delivery-stock-android/build.gradle")"
-          cat > 'delivery-stock-android/build.gradle' <<'__DELIVERY_STOCK_EOF_217__'
-          plugins {
-              id 'com.android.application' version '8.7.3' apply false
-          }
-          __DELIVERY_STOCK_EOF_217__
-          mkdir -p "$(dirname "delivery-stock-android/gradle.properties")"
-          cat > 'delivery-stock-android/gradle.properties' <<'__DELIVERY_STOCK_EOF_223__'
-          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          __DELIVERY_STOCK_EOF_223__
-          mkdir -p "$(dirname "delivery-stock-android/settings.gradle")"
-          cat > 'delivery-stock-android/settings.gradle' <<'__DELIVERY_STOCK_EOF_228__'
-          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
-          rootProject.name = 'DeliveryStockAndroid'
-          include ':app'
-          __DELIVERY_STOCK_EOF_228__
+          gradle -p android-source :app:assembleDebug --no-daemon --stacktrace
+          mkdir -p output
+          cp android-source/app/build/outputs/apk/debug/app-debug.apk output/DeliveryStock-v1.0.0-Android.apk
+          ls -lh output/*.apk
 
-      - name: Optional stable release signing
-        id: signing
-        shell: bash
-        env:
-          STORE_B64: ${{ secrets.DELIVERY_KEYSTORE_BASE64 }}
-          STORE_PASS: ${{ secrets.DELIVERY_KEYSTORE_PASSWORD }}
-          STORE_ALIAS: ${{ secrets.DELIVERY_KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.DELIVERY_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          if [[ -n "$STORE_B64" && -n "$STORE_PASS" && -n "$STORE_ALIAS" && -n "$KEY_PASS" ]]; then
-            printf '%s' "$STORE_B64" | base64 --decode > "$RUNNER_TEMP/delivery-release.jks"
-            echo 'release_signed=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'release_signed=false' >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build APK
-        shell: bash
-        env:
-          DELIVERY_KEYSTORE_PASSWORD: ${{ secrets.DELIVERY_KEYSTORE_PASSWORD }}
-          DELIVERY_KEY_ALIAS: ${{ secrets.DELIVERY_KEY_ALIAS }}
-          DELIVERY_KEY_PASSWORD: ${{ secrets.DELIVERY_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          cd delivery-stock-android
-          if [[ '${{ steps.signing.outputs.release_signed }}' == 'true' ]]; then
-            export DELIVERY_KEYSTORE_PATH="$RUNNER_TEMP/delivery-release.jks"
-            gradle --no-daemon :app:assembleRelease
-            source_apk='app/build/outputs/apk/release/app-release.apk'
-            sign_type='RELEASE (stable keystore from GitHub Secrets)'
-          else
-            gradle --no-daemon :app:assembleDebug
-            source_apk='app/build/outputs/apk/debug/app-debug.apk'
-            sign_type='DEBUG (for initial installation; key may change between builds)'
-          fi
-          test -s "$source_apk"
-          mkdir -p "${{ github.workspace }}/delivery-artifacts"
-          cp "$source_apk" "${{ github.workspace }}/delivery-artifacts/DeliveryStock-v1.0.0-Android.apk"
-          cd "${{ github.workspace }}/delivery-artifacts"
-          sha256sum DeliveryStock-v1.0.0-Android.apk > SHA256SUMS.txt
-          printf 'Application: Delivery Stock\nVersion: 1.0.0\nSigning: %s\nURL: http://103.41.207.63/delivery/media.php?module=rpt_stock_new\nDevice approval requires installation of server backend and guards.\n' "$sign_type" > BUILD_INFO.txt
-
-      - name: Upload installer APK
+      - name: Upload Android APK installer
         uses: actions/upload-artifact@v4
         with:
           name: DeliveryStock-v1.0.0-Android-APK
-          path: delivery-artifacts/
-          retention-days: 30
+          path: output/*.apk
           if-no-files-found: error
+          retention-days: 30
