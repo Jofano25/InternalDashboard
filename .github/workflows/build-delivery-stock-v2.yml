@@ -34,17 +34,33 @@ jobs:
           cp mobile-v2/MainActivity.java android-v2-build/app/src/main/java/id/co/elmecon/deliverystock/MainActivity.java
           mkdir -p android-v2-build/app/src/main/assets
           cp mobile-v2/mobile.html android-v2-build/app/src/main/assets/
+          mkdir -p android-v2-build/app/src/main/res/drawable-nodpi
+          cp mobile-v2/elmecon-app-icon.png android-v2-build/app/src/main/res/drawable-nodpi/elmecon_app_icon.png
           python3 - <<'PY'
           import os,re,pathlib,urllib.parse
           u=os.environ['API_URL']; p=urllib.parse.urlsplit(u)
           if p.scheme!='https' or not p.hostname or p.username or p.query or p.fragment or not p.path.endswith('/api.php') or not re.fullmatch(r'https://[A-Za-z0-9.:-]+/[A-Za-z0-9_./-]+',u): raise SystemExit('Valid HTTPS API URL required')
-          f=pathlib.Path('android-v2-build/app/build.gradle');s=f.read_text().replace("applicationId 'id.co.elmecon.deliverystock'","applicationId 'id.co.elmecon.deliverystock.v2'").replace('versionCode 1','versionCode 201')
+          f=pathlib.Path('android-v2-build/app/build.gradle');s=f.read_text().replace("applicationId 'id.co.elmecon.deliverystock'","applicationId 'id.co.elmecon.deliverystock.v2'").replace('versionCode 1','versionCode 202')
           import json
           field="        buildConfigField 'String', 'DEVICE_API_URL', '" + json.dumps(u) + "'"
-          s=s.replace("versionName '1.0.0'", "versionName '2.1.0'\n" + field)
+          s=s.replace("versionName '1.0.0'", "versionName '2.2.0'\n" + field)
           if field not in s: raise SystemExit('Failed to inject DEVICE_API_URL')
           s=s.replace('compileSdk 35','compileSdk 35\n    buildFeatures { buildConfig true }');f.write_text(s)
-          f=pathlib.Path('android-v2-build/app/src/main/AndroidManifest.xml');f.write_text(f.read_text().replace('android:usesCleartextTraffic="true"','android:usesCleartextTraffic="false"').replace('android:label="Delivery Stock"','android:label="Elmecon Stock V2"'))
+          import xml.etree.ElementTree as ET
+          ns='http://schemas.android.com/apk/res/android'; ET.register_namespace('android',ns)
+          f=pathlib.Path('android-v2-build/app/src/main/AndroidManifest.xml')
+          tree=ET.parse(f); app=tree.getroot().find('application')
+          if app is None: raise SystemExit('Android application manifest missing')
+          def attr(name): return '{'+ns+'}'+name
+          app.set(attr('usesCleartextTraffic'),'false')
+          app.set(attr('label'),'Elmecon Stock')
+          app.set(attr('icon'),'@drawable/elmecon_app_icon')
+          app.set(attr('roundIcon'),'@drawable/elmecon_app_icon')
+          for activity in app.findall('activity'):
+              if activity.get(attr('name')) in ('.MainActivity','id.co.elmecon.deliverystock.MainActivity'):
+                  activity.set(attr('label'),'Elmecon Stock')
+                  activity.set(attr('windowSoftInputMode'),'adjustResize')
+          tree.write(f,encoding='utf-8',xml_declaration=True)
           PY
       - name: SDK and build
         env:
@@ -62,16 +78,16 @@ jobs:
             export DELIVERY_KEYSTORE_PATH="$RUNNER_TEMP/delivery-release.jks"
             printf '%s' "$KEYSTORE" | base64 --decode > "$DELIVERY_KEYSTORE_PATH"
             gradle -p android-v2-build :app:assembleRelease --no-daemon --stacktrace
-            cp android-v2-build/app/build/outputs/apk/release/app-release.apk output/DeliveryStock-v2.1.0-Android.apk
+            cp android-v2-build/app/build/outputs/apk/release/app-release.apk output/ElmeconStock-v2.2.0-Android.apk
           else
             echo '::warning::No release signing credentials; debug APK for pilot only, not production.'
             gradle -p android-v2-build :app:assembleDebug --no-daemon --stacktrace
-            cp android-v2-build/app/build/outputs/apk/debug/app-debug.apk output/DeliveryStock-v2.1.0-Android-PILOT.apk
+            cp android-v2-build/app/build/outputs/apk/debug/app-debug.apk output/ElmeconStock-v2.2.0-Android-PILOT.apk
           fi
           (cd output && sha256sum *.apk > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
-          name: DeliveryStock-v2.1.0-Android-APK
+          name: ElmeconStock-v2.2.0-Android-APK
           path: output/
           if-no-files-found: error
           retention-days: 30
@@ -110,15 +126,15 @@ jobs:
                 base:
                   PRODUCT_BUNDLE_IDENTIFIER: id.co.elmecon.deliverystock
                   SWIFT_VERSION: '5.0'
-                  MARKETING_VERSION: '2.1.0'
-                  CURRENT_PROJECT_VERSION: '201'
+                  MARKETING_VERSION: '2.2.0'
+                  CURRENT_PROJECT_VERSION: '202'
                   TARGETED_DEVICE_FAMILY: '1,2'
               info:
                 path: Info.plist
                 properties:
                   CFBundleDisplayName: Elmecon Stock
-                  CFBundleShortVersionString: '2.1.0'
-                  CFBundleVersion: '201'
+                  CFBundleShortVersionString: '2.2.0'
+                  CFBundleVersion: '202'
                   UILaunchScreen: {}
                   DeviceAPIURL: '__API_URL__'
           '''.replace('__API_URL__',u))
@@ -130,7 +146,7 @@ jobs:
           set -euo pipefail
           xcodebuild -project ios-v2-build/DeliveryStockV2.xcodeproj -scheme DeliveryStockV2 -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/ios-build" CODE_SIGNING_ALLOWED=NO build
           mkdir -p output
-          ditto -c -k --keepParent "$RUNNER_TEMP/ios-build/Build/Products/Release-iphonesimulator/DeliveryStockV2.app" output/DeliveryStock-v2.1-iOS-SIMULATOR.zip
+          ditto -c -k --keepParent "$RUNNER_TEMP/ios-build/Build/Products/Release-iphonesimulator/DeliveryStockV2.app" output/ElmeconStock-v2.2-iOS-SIMULATOR.zip
       - name: Sign and export iPhone Ad Hoc IPA
         if: ${{ inputs.ios_signed }}
         env:
@@ -164,10 +180,10 @@ jobs:
           PY
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/DeliveryStockV2.xcarchive" -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/export.plist"
           mkdir -p output
-          cp "$RUNNER_TEMP/export/DeliveryStockV2.ipa" output/DeliveryStock-v2.1.0-iPhone.ipa
+          cp "$RUNNER_TEMP/export/DeliveryStockV2.ipa" output/ElmeconStock-v2.2.0-iPhone.ipa
       - uses: actions/upload-artifact@v4
         with:
-          name: DeliveryStock-v2.1.0-iOS
+          name: ElmeconStock-v2.2.0-iOS
           path: output/
           if-no-files-found: error
           retention-days: 30
