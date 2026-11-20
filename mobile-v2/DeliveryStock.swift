@@ -57,7 +57,7 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate, URLS
         let privateKey=try key();guard let pub=SecKeyCopyPublicKey(privateKey),let x=SecKeyCopyExternalRepresentation(pub,nil) as Data?,x.count==65 else{throw Failure.invalid}
         // P-256 SPKI prefix + uncompressed X9.63 point, compatible with Android and PHP OpenSSL.
         let prefix=Data([0x30,0x59,0x30,0x13,0x06,0x07,0x2a,0x86,0x48,0xce,0x3d,0x02,0x01,0x06,0x08,0x2a,0x86,0x48,0xce,0x3d,0x03,0x01,0x07,0x03,0x42,0x00]);let spki=prefix+x
-        let p:[String:Any]=["action":action,"token":try token(),"public_key":spki.base64EncodedString(),"timestamp":Int(Date().timeIntervalSince1970),"nonce":try random(16).base64EncodedString(),"platform":"ios","model":"iPhone / iPad","version":200,"data":fields]
+        let p:[String:Any]=["action":action,"token":try token(),"public_key":spki.base64EncodedString(),"timestamp":Int(Date().timeIntervalSince1970),"nonce":try random(16).base64EncodedString(),"platform":"ios","model":"iPhone / iPad","version":201,"data":fields]
         let encoded=try JSONSerialization.data(withJSONObject:p).base64EncodedString();guard let signature=SecKeyCreateSignature(privateKey,.ecdsaSignatureMessageX962SHA256,Data(encoded.utf8) as CFData,nil) as Data? else{throw Failure.invalid}
         var request=URLRequest(url:url);request.httpMethod="POST";request.timeoutInterval=15;request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.httpBody=try JSONSerialization.data(withJSONObject:["payload":encoded,"signature":signature.base64EncodedString()])
         let session=URLSession(configuration:.ephemeral,delegate:self,delegateQueue:nil)
