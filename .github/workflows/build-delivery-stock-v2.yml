@@ -1,0 +1,169 @@
+name: Build Delivery Stock V2 (Android and iPhone)
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'HTTPS URL lengkap ke mobile-v2/api.php (DEV dahulu)'
+        required: true
+        type: string
+      ios_signed:
+        description: 'Build signed IPA Ad Hoc (requires Apple secrets)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      API_URL: ${{ inputs.api_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Prepare isolated Android V2 project
+        run: |
+          set -euo pipefail
+          cp -a android-source android-v2-build
+          cp mobile-v2/MainActivity.java android-v2-build/app/src/main/java/id/co/elmecon/deliverystock/MainActivity.java
+          mkdir -p android-v2-build/app/src/main/assets
+          cp mobile-v2/mobile.html android-v2-build/app/src/main/assets/
+          python3 - <<'PY'
+          import os,re,pathlib,urllib.parse
+          u=os.environ['API_URL']; p=urllib.parse.urlsplit(u)
+          if p.scheme!='https' or not p.hostname or p.username or p.query or p.fragment or not p.path.endswith('/api.php') or not re.fullmatch(r'https://[A-Za-z0-9.:-]+/[A-Za-z0-9_./-]+',u): raise SystemExit('Valid HTTPS API URL required')
+          f=pathlib.Path('android-v2-build/app/build.gradle');s=f.read_text().replace("applicationId 'id.co.elmecon.deliverystock'","applicationId 'id.co.elmecon.deliverystock.v2'").replace('versionCode 1','versionCode 200').replace("versionName '1.0.0'","versionName '2.0.0'\n        buildConfigField 'String', 'DEVICE_API_URL', '\"'+u+'\"'")
+          s=s.replace('compileSdk 35','compileSdk 35\n    buildFeatures { buildConfig true }');f.write_text(s)
+          f=pathlib.Path('android-v2-build/app/src/main/AndroidManifest.xml');f.write_text(f.read_text().replace('android:usesCleartextTraffic="true"','android:usesCleartextTraffic="false"').replace('android:label="Delivery Stock"','android:label="Elmecon Stock V2"'))
+          PY
+      - name: SDK and build
+        env:
+          KEYSTORE: ${{ secrets.DELIVERY_KEYSTORE_BASE64 }}
+          DELIVERY_KEYSTORE_PASSWORD: ${{ secrets.DELIVERY_KEYSTORE_PASSWORD }}
+          DELIVERY_KEY_ALIAS: ${{ secrets.DELIVERY_KEY_ALIAS }}
+          DELIVERY_KEY_PASSWORD: ${{ secrets.DELIVERY_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+          mkdir -p output
+          if [[ -n "$KEYSTORE" && -n "$DELIVERY_KEYSTORE_PASSWORD" && -n "$DELIVERY_KEY_ALIAS" && -n "$DELIVERY_KEY_PASSWORD" ]]; then
+            export DELIVERY_KEYSTORE_PATH="$RUNNER_TEMP/delivery-release.jks"
+            printf '%s' "$KEYSTORE" | base64 --decode > "$DELIVERY_KEYSTORE_PATH"
+            gradle -p android-v2-build :app:assembleRelease --no-daemon --stacktrace
+            cp android-v2-build/app/build/outputs/apk/release/app-release.apk output/DeliveryStock-v2.0.0-Android.apk
+          else
+            echo '::warning::No release signing credentials; debug APK for pilot only, not production.'
+            gradle -p android-v2-build :app:assembleDebug --no-daemon --stacktrace
+            cp android-v2-build/app/build/outputs/apk/debug/app-debug.apk output/DeliveryStock-v2.0.0-Android-PILOT.apk
+          fi
+          (cd output && sha256sum *.apk > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DeliveryStock-v2.0.0-Android-APK
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      API_URL: ${{ inputs.api_url }}
+      SIGNED: ${{ inputs.ios_signed }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - name: Generate iOS project
+        run: |
+          set -euo pipefail
+          mkdir -p ios-v2-build/Sources ios-v2-build/Resources
+          cp mobile-v2/DeliveryStock.swift ios-v2-build/Sources/
+          cp mobile-v2/mobile.html ios-v2-build/Resources/
+          python3 - <<'PY'
+          import os,re,urllib.parse,pathlib
+          u=os.environ['API_URL'];p=urllib.parse.urlsplit(u)
+          if p.scheme!='https' or not p.hostname or p.username or p.query or p.fragment or not p.path.endswith('/api.php') or not re.fullmatch(r'https://[A-Za-z0-9.:-]+/[A-Za-z0-9_./-]+',u): raise SystemExit('Valid HTTPS API URL required')
+          pathlib.Path('ios-v2-build/project.yml').write_text('''name: DeliveryStockV2
+          options:
+            deploymentTarget:
+              iOS: '15.0'
+          targets:
+            DeliveryStockV2:
+              type: application
+              platform: iOS
+              sources:
+                - path: Sources
+                - path: Resources
+                  buildPhase: resources
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: id.co.elmecon.deliverystock
+                  SWIFT_VERSION: '5.0'
+                  MARKETING_VERSION: '2.0.0'
+                  CURRENT_PROJECT_VERSION: '200'
+                  TARGETED_DEVICE_FAMILY: '1,2'
+              info:
+                path: Info.plist
+                properties:
+                  CFBundleDisplayName: Elmecon Stock
+                  CFBundleShortVersionString: '2.0.0'
+                  CFBundleVersion: '200'
+                  UILaunchScreen: {}
+                  DeviceAPIURL: '__API_URL__'
+          '''.replace('__API_URL__',u))
+          PY
+          cd ios-v2-build && xcodegen generate
+      - name: Compile iOS simulator (no signing required)
+        if: ${{ !inputs.ios_signed }}
+        run: |
+          set -euo pipefail
+          xcodebuild -project ios-v2-build/DeliveryStockV2.xcodeproj -scheme DeliveryStockV2 -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/ios-build" CODE_SIGNING_ALLOWED=NO build
+          mkdir -p output
+          ditto -c -k --keepParent "$RUNNER_TEMP/ios-build/Build/Products/Release-iphonesimulator/DeliveryStockV2.app" output/DeliveryStock-v2-iOS-SIMULATOR.zip
+      - name: Sign and export iPhone Ad Hoc IPA
+        if: ${{ inputs.ios_signed }}
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          CERT_PASS: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CERT" && test -n "$CERT_PASS" && test -n "$PROFILE" && test -n "$TEAM" || { echo 'Apple signing secrets missing'; exit 1; }
+          printf '%s' "$CERT" | base64 --decode > "$RUNNER_TEMP/sign.p12"
+          printf '%s' "$PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          PASS=$(openssl rand -hex 24)
+          KC="$RUNNER_TEMP/delivery.keychain-db"
+          security create-keychain -p "$PASS" "$KC"
+          security set-keychain-settings -lut 3600 "$KC"
+          security unlock-keychain -p "$PASS" "$KC"
+          security import "$RUNNER_TEMP/sign.p12" -k "$KC" -P "$CERT_PASS" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$PASS" "$KC"
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/profile.plist")
+          NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          for dir in "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do cp "$RUNNER_TEMP/profile.mobileprovision" "$dir/$UUID.mobileprovision"; done
+          xcodebuild -project ios-v2-build/DeliveryStockV2.xcodeproj -scheme DeliveryStockV2 -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/DeliveryStockV2.xcarchive" archive CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$TEAM" PROVISIONING_PROFILE_SPECIFIER="$NAME" CODE_SIGN_IDENTITY='Apple Distribution'
+          export PROFILE_NAME="$NAME"
+          python3 - <<'PY'
+          import os,plistlib
+          with open(os.environ['RUNNER_TEMP']+'/export.plist','wb') as f: plistlib.dump({'method':'release-testing','signingStyle':'manual','teamID':os.environ['TEAM'],'provisioningProfiles':{'id.co.elmecon.deliverystock':os.environ['PROFILE_NAME']}},f)
+          PY
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/DeliveryStockV2.xcarchive" -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/export.plist"
+          mkdir -p output
+          cp "$RUNNER_TEMP/export/DeliveryStockV2.ipa" output/DeliveryStock-v2.0.0-iPhone.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DeliveryStock-v2.0.0-iOS
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
