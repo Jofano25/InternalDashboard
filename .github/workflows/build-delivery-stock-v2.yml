@@ -20,7 +20,7 @@ jobs:
       API_URL: ${{ inputs.api_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -38,7 +38,11 @@ jobs:
           import os,re,pathlib,urllib.parse
           u=os.environ['API_URL']; p=urllib.parse.urlsplit(u)
           if p.scheme!='https' or not p.hostname or p.username or p.query or p.fragment or not p.path.endswith('/api.php') or not re.fullmatch(r'https://[A-Za-z0-9.:-]+/[A-Za-z0-9_./-]+',u): raise SystemExit('Valid HTTPS API URL required')
-          f=pathlib.Path('android-v2-build/app/build.gradle');s=f.read_text().replace("applicationId 'id.co.elmecon.deliverystock'","applicationId 'id.co.elmecon.deliverystock.v2'").replace('versionCode 1','versionCode 200').replace("versionName '1.0.0'","versionName '2.0.0'\n        buildConfigField 'String', 'DEVICE_API_URL', '\"'+u+'\"'")
+          f=pathlib.Path('android-v2-build/app/build.gradle');s=f.read_text().replace("applicationId 'id.co.elmecon.deliverystock'","applicationId 'id.co.elmecon.deliverystock.v2'").replace('versionCode 1','versionCode 200')
+          import json
+          field="        buildConfigField 'String', 'DEVICE_API_URL', '" + json.dumps(u) + "'"
+          s=s.replace("versionName '1.0.0'", "versionName '2.0.0'\n" + field)
+          if field not in s: raise SystemExit('Failed to inject DEVICE_API_URL')
           s=s.replace('compileSdk 35','compileSdk 35\n    buildFeatures { buildConfig true }');f.write_text(s)
           f=pathlib.Path('android-v2-build/app/src/main/AndroidManifest.xml');f.write_text(f.read_text().replace('android:usesCleartextTraffic="true"','android:usesCleartextTraffic="false"').replace('android:label="Delivery Stock"','android:label="Elmecon Stock V2"'))
           PY
