@@ -40,10 +40,10 @@ jobs:
           import os,re,pathlib,urllib.parse
           u=os.environ['API_URL']; p=urllib.parse.urlsplit(u)
           if p.scheme!='https' or not p.hostname or p.username or p.query or p.fragment or not p.path.endswith('/api.php') or not re.fullmatch(r'https://[A-Za-z0-9.:-]+/[A-Za-z0-9_./-]+',u): raise SystemExit('Valid HTTPS API URL required')
-          f=pathlib.Path('android-v2-build/app/build.gradle');s=f.read_text().replace("applicationId 'id.co.elmecon.deliverystock'","applicationId 'id.co.elmecon.deliverystock.v2'").replace('versionCode 1','versionCode 206')
+          f=pathlib.Path('android-v2-build/app/build.gradle');s=f.read_text().replace("applicationId 'id.co.elmecon.deliverystock'","applicationId 'id.co.elmecon.deliverystock.v2'").replace('versionCode 1','versionCode 207')
           import json
           field="        buildConfigField 'String', 'DEVICE_API_URL', '" + json.dumps(u) + "'"
-          s=s.replace("versionName '1.0.0'", "versionName '2.6.0'\n" + field)
+          s=s.replace("versionName '1.0.0'", "versionName '2.7.0'\n" + field)
           if field not in s: raise SystemExit('Failed to inject DEVICE_API_URL')
           s=s.replace('compileSdk 35','compileSdk 35\n    buildFeatures { buildConfig true }');f.write_text(s)
           import xml.etree.ElementTree as ET
@@ -78,16 +78,16 @@ jobs:
             export DELIVERY_KEYSTORE_PATH="$RUNNER_TEMP/delivery-release.jks"
             printf '%s' "$KEYSTORE" | base64 --decode > "$DELIVERY_KEYSTORE_PATH"
             gradle -p android-v2-build :app:assembleRelease --no-daemon --stacktrace
-            cp android-v2-build/app/build/outputs/apk/release/app-release.apk output/ElmeconStock-v2.6.0-Android.apk
+            cp android-v2-build/app/build/outputs/apk/release/app-release.apk output/ElmeconStock-v2.7.0-Android.apk
           else
             echo '::warning::No release signing credentials; debug APK for pilot only, not production.'
             gradle -p android-v2-build :app:assembleDebug --no-daemon --stacktrace
-            cp android-v2-build/app/build/outputs/apk/debug/app-debug.apk output/ElmeconStock-v2.6.0-Android-PILOT.apk
+            cp android-v2-build/app/build/outputs/apk/debug/app-debug.apk output/ElmeconStock-v2.7.0-Android-PILOT.apk
           fi
           (cd output && sha256sum *.apk > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
-          name: ElmeconStock-v2.6.0-Android-APK
+          name: ElmeconStock-v2.7.0-Android-APK
           path: output/
           if-no-files-found: error
           retention-days: 30
@@ -126,15 +126,15 @@ jobs:
                 base:
                   PRODUCT_BUNDLE_IDENTIFIER: id.co.elmecon.deliverystock
                   SWIFT_VERSION: '5.0'
-                  MARKETING_VERSION: '2.6.0'
-                  CURRENT_PROJECT_VERSION: '206'
+                  MARKETING_VERSION: '2.7.0'
+                  CURRENT_PROJECT_VERSION: '207'
                   TARGETED_DEVICE_FAMILY: '1,2'
               info:
                 path: Info.plist
                 properties:
                   CFBundleDisplayName: Elmecon Stock
-                  CFBundleShortVersionString: '2.6.0'
-                  CFBundleVersion: '206'
+                  CFBundleShortVersionString: '2.7.0'
+                  CFBundleVersion: '207'
                   UILaunchScreen: {}
                   DeviceAPIURL: '__API_URL__'
           '''.replace('__API_URL__',u))
@@ -180,10 +180,10 @@ jobs:
           PY
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/DeliveryStockV2.xcarchive" -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/export.plist"
           mkdir -p output
-          cp "$RUNNER_TEMP/export/DeliveryStockV2.ipa" output/ElmeconStock-v2.6.0-iPhone.ipa
+          cp "$RUNNER_TEMP/export/DeliveryStockV2.ipa" output/ElmeconStock-v2.7.0-iPhone.ipa
       - uses: actions/upload-artifact@v4
         with:
-          name: ElmeconStock-v2.6.0-iOS
+          name: ElmeconStock-v2.7.0-iOS
           path: output/
           if-no-files-found: error
           retention-days: 30
