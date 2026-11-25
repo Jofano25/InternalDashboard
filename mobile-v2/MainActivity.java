@@ -10,6 +10,8 @@ import android.view.WindowInsetsController;
 import android.widget.FrameLayout;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.util.Base64;
 import org.json.JSONObject;
 import java.net.URL;
@@ -86,16 +88,25 @@ public final class MainActivity extends Activity {
         }return ks;
     }
     private final class Bridge{
+        @JavascriptInterface public boolean copyText(String value){
+            if(value==null || !value.matches("^[A-F0-9]{24}$"))return false;
+            try{
+                ClipboardManager clipboard=(ClipboardManager)MainActivity.this.getSystemService(CLIPBOARD_SERVICE);
+                if(clipboard==null)return false;
+                clipboard.setPrimaryClip(ClipData.newPlainText("Elmecon Activation Code",value));
+                return true;
+            }catch(Exception ex){return false;}
+        }
         @JavascriptInterface public void request(String raw){executor.execute(()->{
             JSONObject reply=new JSONObject();try{JSONObject req=new JSONObject(raw);reply.put("id",req.getInt("id"));reply.put("data",call(req.getString("action"),req.getJSONObject("data")));}catch(Exception e){try{reply.put("error","Gagal terhubung / konfigurasi server belum siap.");}catch(Exception ignored){}}
             runOnUiThread(()->{if(web!=null)web.evaluateJavascript("receive("+reply+")",null);});
         });}
     }
     private JSONObject call(String action,JSONObject data)throws Exception{
-        if(!action.equals("status")&&!action.equals("register")&&!action.equals("stock")&&!action.equals("admin_list")&&!action.equals("admin_code")&&!action.equals("admin_approve"))throw new IOException();
+        if(!action.equals("status")&&!action.equals("register")&&!action.equals("stock")&&!action.equals("admin_list")&&!action.equals("admin_code")&&!action.equals("admin_approve")&&!action.equals("admin_device")&&!action.equals("admin_settings")&&!action.equals("admin_settings_save")&&!action.equals("admin_history"))throw new IOException();
         URL url=new URL(BuildConfig.DEVICE_API_URL);if(!"https".equals(url.getProtocol())||url.getUserInfo()!=null)throw new IOException();
         KeyStore ks=keys();String token=getPreferences(0).getString("token","");if(token.isEmpty()){token=random(32);if(!getPreferences(0).edit().putString("token",token).commit())throw new IOException();}
-        JSONObject p=new JSONObject().put("action",action).put("token",token).put("public_key",b64(ks.getCertificate(ALIAS).getPublicKey().getEncoded())).put("timestamp",System.currentTimeMillis()/1000).put("nonce",random(16)).put("platform","android").put("model",Build.MANUFACTURER+" "+Build.MODEL).put("version",206).put("data",data);
+        JSONObject p=new JSONObject().put("action",action).put("token",token).put("public_key",b64(ks.getCertificate(ALIAS).getPublicKey().getEncoded())).put("timestamp",System.currentTimeMillis()/1000).put("nonce",random(16)).put("platform","android").put("model",Build.MANUFACTURER+" "+Build.MODEL).put("version",207).put("data",data);
         String encoded=b64(p.toString().getBytes(StandardCharsets.UTF_8));Signature sign=Signature.getInstance("SHA256withECDSA");sign.initSign((PrivateKey)ks.getKey(ALIAS,null));sign.update(encoded.getBytes(StandardCharsets.US_ASCII));
         byte[] body=new JSONObject().put("payload",encoded).put("signature",b64(sign.sign())).toString().getBytes(StandardCharsets.UTF_8);
         HttpsURLConnection c=(HttpsURLConnection)url.openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(10000);c.setReadTimeout(15000);c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");
